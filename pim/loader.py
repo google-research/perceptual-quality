@@ -19,6 +19,7 @@ import json
 import os
 import urllib
 import zipfile
+from perceptual_quality.pim import config
 from perceptual_quality.pim import models
 
 # Default URL to fetch model weights from.
@@ -31,7 +32,7 @@ def download_model(model_name, weights_cache):
   with urllib.request.urlopen(url) as request:
     buffer = io.BytesIO(request.read())
   with zipfile.ZipFile(buffer) as archive:
-    os.makedirs(weights_cache)
+    os.makedirs(weights_cache, exist_ok=True)
     archive.extractall(weights_cache)
 
 
@@ -59,6 +60,10 @@ def load_trained(model_name, weights_cache="/tmp/pim_weights"):
   Returns:
     Appropriately configured `PIM` instance ready to be used.
   """
+  if URL_PREFIX == "test":
+    # Do not load trained weights in a unit test scenario.
+    params = config.get_params()
+    return models.PIM(params)
   path = os.path.join(weights_cache, model_name)
   if not os.path.exists(path):
     download_model(model_name, weights_cache)

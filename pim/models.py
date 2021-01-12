@@ -59,7 +59,6 @@ class PIM(tf.keras.Model):
   def __init__(self, params):
     super().__init__()
 
-    self.patch_shape = params['subsample_shape']
     if params['multiscale'] is not None:
       self.frontend = MultiScaleFrontend(params)
     else:
