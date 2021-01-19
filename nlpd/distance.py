@@ -27,7 +27,7 @@ def lp_norm(subbands_a, subbands_b, spatial_axes=(-3, -2)):
   > V. Laparra, A. Berardino, J. Ballé and E. P. Simoncelli</br>
   > https://doi.org/10.1364/JOSAA.34.001511
 
-  Arguments:
+  Args:
     subbands_a: Sequence of `Tensor`s. NLP subband decompositions of image A.
     subbands_b: Sequence of `Tensor`s. NLP subband decompositions of image B.
     spatial_axes: Sequence of two integers. Should specify the axes of the
@@ -60,7 +60,7 @@ def nlpd(image_a, image_b, num_levels=6, cdm_min=5, cdm_max=180,
   The inputs are assumed to be sRGB images, and the display is assumed to have a
   dynamic range of `cdm_min` to `cdm_max` cd/m^2.
 
-  Arguments:
+  Args:
     image_a: `Tensor` containing image A.
     image_b: `Tensor` containing image B.
     num_levels: Integer. The number of pyramid levels, including the lowpass
@@ -109,7 +109,7 @@ def nlpd_fast(image_a, image_b, num_levels=6, data_format="channels_last"):
   The inputs are assumed to be sRGB images. This approximation omits the
   colorspace conversion.
 
-  Arguments:
+  Args:
     image_a: `Tensor` containing image A.
     image_b: `Tensor` containing image B.
     num_levels: Integer. The number of pyramid levels, including the lowpass

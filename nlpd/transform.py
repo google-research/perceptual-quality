@@ -56,7 +56,7 @@ class NLP(tf.keras.layers.Layer):
                name="NLP"):
     """Initializer.
 
-    Arguments:
+    Args:
       num_levels: Integer. The number of pyramid levels, including the lowpass
         residual.
       gamma: Float or None. The gamma parameter for the power law transformation
