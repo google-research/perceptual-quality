@@ -14,6 +14,7 @@
 # ==============================================================================
 """Loader for pre-trained PIM models."""
 
+import hashlib
 import io
 import json
 import os
@@ -25,13 +26,25 @@ from perceptual_quality.pim import models
 # Default URL to fetch model weights from.
 URL_PREFIX = "https://storage.googleapis.com/tensorflow_compression/pim"
 
+# Secure hash of downloadable files.
+SHA512_DIGESTS = {
+    "pim-1": "436b4a95e667d8a4b6ee639f1d5d303585059b3f33075dbabbc9b1d0fb5008fa"
+             "1509c046b80e2565c69e77f3ac396288eeb260cad8e316ea5c7e207b57ae68cb",
+    "pim-5": "7939f9f9ed07650e9e290cac4e2cf559424795c26bb41f0641b7b77e93c96426"
+             "8e5f4a8d6f0ba9a37d4407aef9973c04ee1dd88f1563643f0bc600a1a456aab3",
+}
+
 
 def download_model(model_name, weights_cache):
   """Downloads and caches model weights from web storage."""
   url = f"{URL_PREFIX}/{model_name}.zip"
   with urllib.request.urlopen(url) as request:
-    buffer = io.BytesIO(request.read())
-  with zipfile.ZipFile(buffer) as archive:
+    buff = io.BytesIO(request.read())
+  if hashlib.sha512(buff.getbuffer()).hexdigest() != SHA512_DIGESTS[model_name]:
+    raise RuntimeError(
+        f"Downloaded checkpoint for model '{model_name}' has incorrect secure "
+        f"hash.")
+  with zipfile.ZipFile(buff) as archive:
     os.makedirs(weights_cache, exist_ok=True)
     archive.extractall(weights_cache)
 
