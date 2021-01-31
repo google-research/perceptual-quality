@@ -4,19 +4,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="perceptual-quality", # Replace with your own username
+    name="perceptual-quality",
     version="0.0.1",
-    author="Example Author",
-    author_email="author@example.com",
+    author="Sangnie Bhardwaj, Johannes Ballé and Ian Fischer",
     description="A small example package",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/pypa/sampleproject",
+    url="https://github.com/google-research/perceptual-quality",
     packages=setuptools.find_packages(),
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires='>=3.6',
 )
