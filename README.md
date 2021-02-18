@@ -3,6 +3,12 @@
 This project contains differentiable perceptual quality metrics implemented in
 the TensorFlow framework.
 
+## Installation
+
+```bash
+pip install https://github.com/google-research/perceptual-quality/archive/master.zip
+```
+
 ## PIM
 
 This is an implementation of the perceptual information metric, as described in:
@@ -17,10 +23,12 @@ Usage:
 from perceptual_quality import pim
 
 metric = pim.load_trained("pim-5")
+# image_A, image_B: 4D tensors, batch x height x width x 3, sRGB colorspace.
 distance = metric((image_A/255, image_B/255))
 ```
 
-Refer to the online help of `pim.PIM.call()` for further information.
+Refer to the online help of `pim.PIM.call()` for further information on
+supported image formats, etc.
 
 ## NLPD
 
@@ -36,12 +44,14 @@ Usage:
 ```python
 from perceptual_quality import nlpd
 
+# image_A, image_B: at least 3D tensors, height x width x 3, sRGB or grayscale.
+# Will return one number per color channel. Can also be batched.
 distance = nlpd.nlpd(image_A, image_B)
 distance = nlpd.nlpd_fast(image_A, image_B)
 ```
 
 Refer to the online help of `nlpd.nlpd()` and `nlpd.nlpd_fast()` for further
-information.
+information on supported image formats, assumed display characteristics, etc.
 
 ## Authors
 
