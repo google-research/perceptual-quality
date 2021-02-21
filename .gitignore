@@ -1,4 +1,22 @@
-.DS_Store
-*.pyc
-*.so
+# backup files
 *~
+
+# Python byte code, etc.
+__pycache__/
+*.py[cod]
+*$py.class
+
+# type checkers
+.pyre/
+.pytype/
+
+# Jupyter notebook
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
