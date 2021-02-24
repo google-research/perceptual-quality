@@ -14,9 +14,8 @@
 # ==============================================================================
 """Subnetworks used in PIM."""
 
-import numpy as np
 from perceptual_quality.third_party.pyrtools import spfilters
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 
 class Conv(tf.keras.Sequential):
@@ -44,31 +43,33 @@ class Steerable(tf.keras.layers.Layer):
     self.filter_type = params['steerable_filter_type']
     filters = getattr(spfilters, f'sp_filters{self.filter_type}')()
     self.nlevels = self.height * filters['bfilts'].shape[1] + 2
+    self.num_channels = params['num_channels']
 
   def build(self, input_shape):
     super().build(input_shape)
     filters = getattr(spfilters, f'sp_filters{self.filter_type}')()
 
-    self.lo0filt = tf.constant(
-        filters['lo0filt'][:, :, None, None] * np.eye(input_shape[-1]),
-        dtype=self.dtype)
-    self.hi0filt = tf.constant(
-        filters['hi0filt'][:, :, None, None] * np.eye(input_shape[-1]),
-        dtype=self.dtype)
-    self.lofilt = tf.constant(
-        filters['lofilt'][:, :, None, None] * np.eye(input_shape[-1]),
-        dtype=self.dtype)
+    self.lo0filt = tf.tile(
+        tf.constant(filters['lo0filt'], dtype=self.dtype)[:, :, None, None],
+        [1, 1, self.num_channels, 1])
+    self.hi0filt = tf.tile(
+        tf.constant(filters['hi0filt'], dtype=self.dtype)[:, :, None, None],
+        [1, 1, self.num_channels, 1])
+    self.lofilt = tf.tile(
+        tf.constant(filters['lofilt'], dtype=self.dtype)[:, :, None, None],
+        [1, 1, self.num_channels, 1])
 
     bfilters = filters['bfilts']
     nbands = bfilters.shape[1]
-    bfilt_size = int(round(np.sqrt(bfilters.shape[0])))
+    bfilt_size = int(round(bfilters.shape[0] ** .5))
     self.bfilts = []
     for b in range(nbands):
-      filt = bfilters[:, b].reshape(bfilt_size, bfilt_size).T
+      filt = tf.constant(bfilters[:, b], dtype=self.dtype)
+      filt = tf.transpose(tf.reshape(filt, (bfilt_size, bfilt_size)))
       if (bfilt_size // 2) % 2:
-        filt = np.pad(filt, [[1, 1], [1, 1]], mode='constant')
-      filt = filt[:, :, None, None] * np.eye(input_shape[-1])
-      self.bfilts.append(tf.constant(filt, dtype=self.dtype))
+        filt = tf.pad(filt, [[1, 1], [1, 1]])
+      self.bfilts.append(
+          tf.tile(filt[:, :, None, None], [1, 1, self.num_channels, 1]))
 
   def call(self, image):
     pyramid = []
@@ -85,15 +86,19 @@ class Steerable(tf.keras.layers.Layer):
           (0, 0),
       ]
 
-    hi0 = tf.nn.conv2d(image, self.hi0filt, 1, padding=self.padding)
+    lo = tf.nn.depthwise_conv2d(
+        image, self.lo0filt, strides=[1, 1, 1, 1], padding=self.padding)
+    hi0 = tf.nn.depthwise_conv2d(
+        image, self.hi0filt, strides=[1, 1, 1, 1], padding=self.padding)
     pyramid.append(hi0)
-    lo = tf.nn.conv2d(image, self.lo0filt, 1, padding=self.padding)
 
     for _ in range(self.height):
       for bfilt in self.bfilts:
-        b = tf.nn.conv2d(lo, bfilt, 1, padding=self.padding)
+        b = tf.nn.depthwise_conv2d(
+            lo, bfilt, strides=[1, 1, 1, 1], padding=self.padding)
         pyramid.append(b)
-      lo = tf.nn.conv2d(lo, self.lofilt, 2, padding=lo_padding)
+      lo = tf.nn.depthwise_conv2d(
+          lo, self.lofilt, strides=[1, 2, 2, 1], padding=lo_padding)
     pyramid.append(lo)
 
     return pyramid[::-1]
@@ -106,24 +111,30 @@ class Laplacian(tf.keras.layers.Layer):
     super().__init__(name=name)
     self.nlevels = params['nscales']
     self.use_residual = params['use_residual']
+    self.num_channels = params['num_channels']
 
   def build(self, input_shape):
     super().build(input_shape)
-    gauss_filter = (np.outer([1, 2, 1], [1, 2, 1])[:, :, None, None] / 16 *
-                    np.eye(input_shape[-1]))
-    self.gauss_filter = tf.constant(gauss_filter, dtype=self.dtype)
+    filt = tf.constant([1, 2, 1], dtype=self.dtype) / 4
+    self.gauss_filter = tf.tile(
+        filt[:, None, None, None] * filt[None, :, None, None],
+        [1, 1, self.num_channels, 1])
 
   def call(self, image):
     pyramid = []
+    transpose_filter = 4. * self.gauss_filter * tf.eye(self.num_channels)
     for i in range(self.nlevels):
       if i == self.nlevels-1 and self.use_residual:
         subband = image
       else:
         shape = tf.shape(image)
-        low = tf.nn.conv2d(image, self.gauss_filter, 2, padding='VALID')
+        low = tf.nn.depthwise_conv2d(
+            image, self.gauss_filter, strides=[1, 2, 2, 1], padding='VALID')
         image = image[:, 2:shape[1]-2, 2:shape[2]-2, :]
+        # There is no depthwise convolution implementation with upsampling, so
+        # we need to use conv2d_transpose.
         high = tf.nn.conv2d_transpose(
-            low, self.gauss_filter*4., tf.shape(image), 2,
+            low, transpose_filter, tf.shape(image), 2,
             padding=((0, 0), (2, 2), (2, 2), (0, 0)))
         subband = image - high
         image = low
