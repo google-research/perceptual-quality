@@ -16,7 +16,7 @@
 
 from absl.testing import parameterized
 from perceptual_quality.nlpd import transform
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 
 class TransformTest(tf.test.TestCase, parameterized.TestCase):
@@ -37,12 +37,12 @@ class TransformTest(tf.test.TestCase, parameterized.TestCase):
   def test_invalid_shapes_fail_channels_first(self):
     nlp = transform.NLP(data_format="channels_first")
     with self.assertRaises(ValueError):
-      nlp.build((16,))
+      nlp(tf.zeros([16]))
 
   def test_invalid_shapes_fail_channels_last(self):
     nlp = transform.NLP(data_format="channels_last")
     with self.assertRaises(ValueError):
-      nlp.build((16, 16))
+      nlp(tf.zeros([16, 16]))
 
   @parameterized.parameters(1, 2, 3)
   def test_number_and_shape_of_scales_match_channels_first(self, num_levels):

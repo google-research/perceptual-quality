@@ -14,7 +14,7 @@
 # ==============================================================================
 """NLP transform."""
 
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 
 class NLP(tf.keras.layers.Layer):
@@ -26,12 +26,24 @@ class NLP(tf.keras.layers.Layer):
   > V. Laparra, A. Berardino, J. Ballé and E. P. Simoncelli</br>
   > https://doi.org/10.1364/JOSAA.34.001511
 
-  Inputs to this transform are expected to be linear luminances in cd∕m^2. The
-  input tensor must have at least two spatial dimensions, and a trailing channel
-  dimension if `data_format == 'channels_last'`. Any leading dimensions are
-  simply passed through to the output.
+  The transform operates only across spatial dimensions. With
+  `data_format == 'channels_first'`, the input must have shape `(..., H, W)`.
+  With `data_format == 'channels_last'`, the input must have shape
+  `(..., H, W, C)`. There are `num_level` output tensors with varying spatial
+  dimensions. The non-spatial dimensions are simply passed through to the
+  outputs. For example:
 
-  To convert from typical sRGB pixel values stored in an `image` array to linear
+  ```
+  data_format == 'channels_last':
+  (M, N, H, W, C) -> [(M, N, H1, W1, C), (M, N, H2, W2, C), ...]
+
+  data_format == 'channels_first':
+  (H, W) -> [(H1, W1), (H2, W2), ...]
+  (N, C, H, W) -> [(N, C, H1, W1), (N, C, H2, W2), ...]
+  ```
+
+  Inputs to this transform are expected to be linear luminances in cd∕m^2. To
+  convert from typical sRGB pixel values stored in an `image` array to linear
   luminances, one could assume a display with a dynamic range between 5 and 180
   cd/m^2, and make the following transformation:
 
@@ -81,15 +93,6 @@ class NLP(tf.keras.layers.Layer):
     self.data_format = str(data_format)
 
   def build(self, input_shape):
-    input_shape = tf.TensorShape(input_shape)
-    if self.data_format == "channels_last":
-      if input_shape.rank < 3:
-        raise ValueError(f"Input must have at least 3 dimensions, received "
-                         f"{input_shape.rank}.")
-    else:
-      if input_shape.rank < 2:
-        raise ValueError(f"Input must have at least 2 dimensions, received "
-                         f"{input_shape.rank}.")
     super().build(input_shape)
 
     # We name these variables as in the paper.
@@ -114,23 +117,27 @@ class NLP(tf.keras.layers.Layer):
 
   def _fold_dimensions(self, image):
     """Folds batch/channel/depth dimensions for easier processing."""
-    # If not in channels_first format yet, convert to it first.
+    rank = image.shape.rank
+    min_rank = 3 if self.data_format == "channels_last" else 2
+    if rank is None or rank < min_rank:
+      raise ValueError(f"Input tensor must have at least rank {min_rank}, "
+                       f"received shape {image.shape}.")
     if self.data_format == "channels_last":
-      rank = tf.rank(image)
-      image = tf.transpose(image, [0, rank - 1] + list(range(1, rank - 1)))
-    # Fold all but the spatial dimensions, so we can always use 2D convolutions
-    # without duplicating filters.
+      # Move channel dimension to the beginning.
+      image = tf.transpose(image, [rank - 1] + list(range(rank - 1)))
+    # Fold all but the spatial dimensions, so we can always use NHWC 2D
+    # convolutions without duplicating filters.
     full_shape = tf.shape(image)
     folded_shape = tf.concat([[-1], full_shape[-2:], [1]], 0)
-    return full_shape[:-2], tf.reshape(image, folded_shape)
+    return tf.reshape(image, folded_shape), full_shape[:-2], rank
 
-  def _unfold_dimensions(self, subband, folded_dims):
+  def _unfold_dimensions(self, subband, folded_dims, rank):
     """Undoes `_fold_dimensions`."""
     full_shape = tf.concat([folded_dims, tf.shape(subband)[-3:-1]], 0)
     subband = tf.reshape(subband, full_shape)
     if self.data_format == "channels_last":
-      rank = tf.rank(subband)
-      return tf.transpose(subband, [0] + list(range(2, rank)) + [1])
+      # Move channel dimension back to the end.
+      return tf.transpose(subband, list(range(1, rank)) + [0])
     else:
       return subband
 
@@ -153,7 +160,8 @@ class NLP(tf.keras.layers.Layer):
     return x - up_hw, down_hw[:, 1:-1, 1:-1, :]
 
   def call(self, image):
-    folded_dims, x = self._fold_dimensions(image)
+    image = tf.convert_to_tensor(image, dtype=self.dtype)
+    x, folded_dims, rank = self._fold_dimensions(image)
 
     if self.gamma is not None:
       x **= self.gamma
@@ -170,4 +178,4 @@ class NLP(tf.keras.layers.Layer):
       subbands.append(z / (pool + self.sigma))
     subbands.append(x / (abs(x) + self.sigma_l))
 
-    return [self._unfold_dimensions(s, folded_dims) for s in subbands]
+    return [self._unfold_dimensions(s, folded_dims, rank) for s in subbands]
