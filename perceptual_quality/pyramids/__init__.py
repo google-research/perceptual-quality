@@ -15,6 +15,7 @@
 """Image pyramids."""
 
 # pylint:disable=unused-import
+from perceptual_quality.pyramids.gaussian import GaussianPyramid
 from perceptual_quality.pyramids.laplacian import LaplacianPyramid
 from perceptual_quality.pyramids.steerable import SteerablePyramid
 # pylint:enable=unused-import
