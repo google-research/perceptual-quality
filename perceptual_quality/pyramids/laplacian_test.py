@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC. All Rights Reserved.
+# Copyright 2021 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,51 +12,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for NLP transform."""
+"""Tests for Laplacian pyramid."""
 
 from absl.testing import parameterized
-from perceptual_quality.nlpd import transform
+from perceptual_quality.pyramids import laplacian
 import tensorflow as tf
 
 
-class TransformTest(tf.test.TestCase, parameterized.TestCase):
+class LaplacianTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(-1, 0)
   def test_invalid_num_levels_fails(self, num_levels):
     with self.assertRaises(ValueError):
-      transform.NLP(num_levels=num_levels)
-
-  def test_invalid_gamma_fails(self):
-    with self.assertRaises(ValueError):
-      transform.NLP(gamma=-1)
+      laplacian.LaplacianPyramid(num_levels=num_levels)
 
   def test_invalid_data_format_fails(self):
     with self.assertRaises(ValueError):
-      transform.NLP(data_format=3)
+      laplacian.LaplacianPyramid(data_format=3)
 
   @parameterized.parameters("channels_first", "channels_last")
   def test_invalid_shape_fails(self, data_format):
-    nlp = transform.NLP(data_format=data_format)
+    pyramid = laplacian.LaplacianPyramid(data_format=data_format)
     with self.assertRaises(ValueError):
-      nlp(tf.zeros([16]))
+      pyramid(tf.zeros([16]))
 
   @parameterized.parameters(1, 2, 3)
   def test_number_and_shape_of_scales_match_channels_first(self, num_levels):
-    nlp = transform.NLP(num_levels=num_levels, data_format="channels_first")
-    image = tf.zeros((32, 16))
-    subbands = nlp(image)
+    pyramid = laplacian.LaplacianPyramid(
+        num_levels=num_levels, data_format="channels_first")
+    image = tf.zeros((3, 32, 16))
+    subbands = pyramid(image)
     self.assertLen(subbands, num_levels)
-    expected_shapes = [(32, 16), (16, 8), (8, 4)]
+    expected_shapes = [(3, 32, 16), (3, 16, 8), (3, 8, 4)]
     for subband, shape in zip(subbands, expected_shapes):
       self.assertEqual(subband.shape, shape)
 
   @parameterized.parameters(1, 2)
   def test_number_and_shape_of_scales_match_channels_last(self, num_levels):
-    nlp = transform.NLP(num_levels=num_levels, data_format="channels_last")
+    pyramid = laplacian.LaplacianPyramid(
+        num_levels=num_levels, data_format="channels_last")
     image = tf.zeros((1, 16, 16, 2))
-    subbands = nlp(image)
+    subbands = pyramid(image)
     self.assertLen(subbands, num_levels)
     expected_shapes = [(1, 16, 16, 2), (1, 8, 8, 2)]
+    for subband, shape in zip(subbands, expected_shapes):
+      self.assertEqual(subband.shape, shape)
+
+  @parameterized.parameters(1, 2, 3)
+  def test_number_and_shape_of_scales_match_valid(self, num_levels):
+    pyramid = laplacian.LaplacianPyramid(
+        num_levels=num_levels, padding="valid", data_format="channels_last")
+    image = tf.zeros((48, 64))
+    subbands = pyramid(image)
+    expected_shapes = {
+        1: [(48, 64)],
+        2: [(40, 56), (22, 30)],
+        3: [(40, 56), (14, 22), (9, 13)],
+    }[num_levels]
+    self.assertLen(subbands, num_levels)
     for subband, shape in zip(subbands, expected_shapes):
       self.assertEqual(subband.shape, shape)
 

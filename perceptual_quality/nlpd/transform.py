@@ -14,10 +14,11 @@
 # ==============================================================================
 """NLP transform."""
 
+from perceptual_quality.pyramids import laplacian
 import tensorflow as tf
 
 
-class NLP(tf.keras.layers.Layer):
+class NLP(laplacian.LaplacianPyramid):
   """Normalized Laplacian pyramid transformation.
 
   This implements the perceptual transform f(S) as defined in the paper:
@@ -27,19 +28,20 @@ class NLP(tf.keras.layers.Layer):
   > https://doi.org/10.1364/JOSAA.34.001511
 
   The transform operates only across spatial dimensions. With
-  `data_format == 'channels_first'`, the input must have shape `(..., H, W)`.
-  With `data_format == 'channels_last'`, the input must have shape
-  `(..., H, W, C)`. There are `num_level` output tensors with varying spatial
-  dimensions. The non-spatial dimensions are simply passed through to the
-  outputs. For example:
+  `data_format == 'channels_first'`, the input must have shape `(H, W)`,
+  `(C, H, W)`, or `(N, C, H, W)`. With `data_format == 'channels_last'`, the
+  input must have shape `(H, W)`, `(H, W, C)`, or `(N, H, W, C)`. There are
+  `num_level` output tensors with varying spatial dimensions. The non-spatial
+  dimensions are simply passed through to the outputs. For example:
 
   ```
   data_format == 'channels_last':
-  (M, N, H, W, C) -> [(M, N, H1, W1, C), (M, N, H2, W2, C), ...]
+  (N, H, W, C) -> [(N, H1, W1, C), (N, H2, W2, C), ...]
+  (H, W, C) -> [(H1, W1, C), (H2, W2, C), ...]
 
   data_format == 'channels_first':
-  (H, W) -> [(H1, W1), (H2, W2), ...]
   (N, C, H, W) -> [(N, C, H1, W1), (N, C, H2, W2), ...]
+  (H, W) -> [(H1, W1), (H2, W2), ...]
   ```
 
   Inputs to this transform are expected to be linear luminances in cd∕m^2. To
@@ -78,27 +80,20 @@ class NLP(tf.keras.layers.Layer):
       data_format: String. Either `'channels_first'` or `'channels_last'`.
       name: String. A name for the transformation.
     """
-    super().__init__(name=name)
-    if num_levels < 1:
-      raise ValueError(f"Must have at least one level, received {num_levels}.")
+    super().__init__(num_levels=num_levels, data_format=data_format, name=name)
     if gamma is not None and gamma <= 0:
       raise ValueError(f"gamma must be either None or a positive number, "
                        f"received {gamma}.")
-    if data_format not in ("channels_first", "channels_last"):
-      raise ValueError(
-          f"data_format must be either 'channels_first' or 'channels_last', "
-          f"received '{data_format}'.")
-    self.num_levels = int(num_levels)
     self.gamma = None if gamma is None else float(gamma)
-    self.data_format = str(data_format)
 
   def build(self, input_shape):
     super().build(input_shape)
-
     # We name these variables as in the paper.
     # pylint:disable=invalid-name
-    # H/W separable five-tap filter for Laplacian pyramid.
-    self.L = tf.constant([.05, .25, .4, .25, .05], dtype=self.dtype)
+
+    # 5-tap lowpass filter for Laplacian pyramid.
+    L = tf.constant([.05, .25, .4, .25, .05], dtype=self.dtype)
+    self.L = L[None, :, None, None] * L[:, None, None, None]
 
     # Normalization pool for bandpass scales.
     P = tf.constant([
@@ -109,73 +104,45 @@ class NLP(tf.keras.layers.Layer):
         [4e-2, 4e-2, 5e-2, 4e-2, 4e-2],
     ], dtype=self.dtype)
     self.P = tf.reshape(P, (5, 5, 1, 1))
-    # pylint:enable=invalid-name
 
     # Additive constants for the normalization.
     self.sigma = tf.constant(.17, dtype=self.dtype)
     self.sigma_l = tf.constant(4.86, dtype=self.dtype)
 
-  def _fold_dimensions(self, image):
-    """Folds batch/channel/depth dimensions for easier processing."""
-    rank = image.shape.rank
-    min_rank = 3 if self.data_format == "channels_last" else 2
-    if rank is None or rank < min_rank:
-      raise ValueError(f"Input tensor must have at least rank {min_rank}, "
-                       f"received shape {image.shape}.")
-    if self.data_format == "channels_last":
-      # Move channel dimension to the beginning.
-      image = tf.transpose(image, [rank - 1] + list(range(rank - 1)))
-    # Fold all but the spatial dimensions, so we can always use NHWC 2D
-    # convolutions without duplicating filters.
-    full_shape = tf.shape(image)
-    folded_shape = tf.concat([[-1], full_shape[-2:], [1]], 0)
-    return tf.reshape(image, folded_shape), full_shape[:-2], rank
-
-  def _unfold_dimensions(self, subband, folded_dims, rank):
-    """Undoes `_fold_dimensions`."""
-    full_shape = tf.concat([folded_dims, tf.shape(subband)[-3:-1]], 0)
-    subband = tf.reshape(subband, full_shape)
-    if self.data_format == "channels_last":
-      # Move channel dimension back to the end.
-      return tf.transpose(subband, list(range(1, rank)) + [0])
-    else:
-      return subband
-
-  def _laplacian_level(self, x, l_w, l_h, l_w2, l_h2):
-    """Performs one down/upsampling level of the Laplacian pyramid."""
-    x_shape = tf.shape(x)
-    padded = tf.pad(x, ((0, 0), (4, 4), (4, 4), (0, 0)), mode="REFLECT")
-    down_h = tf.nn.conv2d(
-        padded, l_h, (2, 1), padding="VALID", data_format="NHWC")
-    down_hw = tf.nn.conv2d(
-        down_h, l_w, (1, 2), padding="VALID", data_format="NHWC")
-    up_h_shape = tf.concat([tf.shape(down_hw)[:-2], x_shape[-2:]], 0)
-    up_w = tf.nn.conv2d_transpose(
-        down_hw, l_w2, up_h_shape, (1, 2),
-        padding=((0, 0), (0, 0), (4, 4), (0, 0)), data_format="NHWC")
-    up_hw = tf.nn.conv2d_transpose(
-        up_w, l_h2, x_shape, (2, 1),
-        padding=((0, 0), (4, 4), (0, 0), (0, 0)), data_format="NHWC")
-    # For input x^(n), these are called z^(n) and x^(n+1) in the paper.
-    return x - up_hw, down_hw[:, 1:-1, 1:-1, :]
+    # pylint:enable=invalid-name
 
   def call(self, image):
-    image = tf.convert_to_tensor(image, dtype=self.dtype)
-    x, folded_dims, rank = self._fold_dimensions(image)
+    x = tf.convert_to_tensor(image, dtype=self.dtype)
+    rank = x.shape.rank
+    channel_axis = self._data_format.find("C")
+    if not 2 <= rank <= 4:
+      raise ValueError(
+          f"Input image tensor must be rank 2, 3, or 4, got shape {x.shape}.")
+    if rank in (2, 3):
+      x = tf.expand_dims(x, 0)
+    if rank == 2:
+      x = tf.expand_dims(x, channel_axis)
+    num_channels = x.shape[channel_axis]
+
+    kernel = tf.broadcast_to(self.L, (5, 5, num_channels, 1))
+    kernel4 = tf.broadcast_to(4. * self.L, (5, 5, num_channels, 1))
+    kernelp = tf.broadcast_to(self.P, (5, 5, num_channels, 1))
 
     if self.gamma is not None:
       x **= self.gamma
 
-    l_w = tf.reshape(self.L, (1, 5, 1, 1))
-    l_h = tf.reshape(self.L, (5, 1, 1, 1))
-    l_w2 = 2. * l_w
-    l_h2 = 2. * l_h
-
     subbands = []
     for _ in range(self.num_levels - 1):
-      z, x = self._laplacian_level(x, l_w, l_h, l_w2, l_h2)
-      pool = tf.nn.conv2d(abs(z), self.P, 1, padding="SAME", data_format="NHWC")
+      z, x = self._laplacian_level(x, kernel, kernel4)
+      pool = tf.nn.depthwise_conv2d(
+          abs(z), kernelp, strides=(1, 1, 1, 1), padding="SAME",
+          data_format=self._data_format)
       subbands.append(z / (pool + self.sigma))
     subbands.append(x / (abs(x) + self.sigma_l))
 
-    return [self._unfold_dimensions(s, folded_dims, rank) for s in subbands]
+    if rank == 2:
+      subbands = [tf.squeeze(s, (0, channel_axis)) for s in subbands]
+    elif rank == 3:
+      subbands = [tf.squeeze(s, 0) for s in subbands]
+
+    return subbands

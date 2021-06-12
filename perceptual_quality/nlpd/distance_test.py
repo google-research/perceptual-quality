@@ -43,17 +43,15 @@ class DistanceTest(tf.test.TestCase):
       distance.nlpd(image, image, num_levels=3, cdm_min=-50, cdm_max=10)
 
   def test_nlpd_is_zero_for_same_image(self):
-    image = tf.random.uniform((32, 32), minval=0, maxval=256, dtype=tf.int32)
+    image = tf.random.uniform((32, 32, 1), minval=0, maxval=256, dtype=tf.int32)
     image = tf.cast(image, tf.uint8)
-    nlpd = distance.nlpd(
-        image, image, num_levels=3, data_format="channels_first")
+    nlpd = distance.nlpd(image, image, num_levels=3)
     self.assertEqual(nlpd, 0.)
 
   def test_nlpd_fast_is_zero_for_same_image(self):
-    image = tf.random.uniform((32, 32), minval=0, maxval=256, dtype=tf.int32)
+    image = tf.random.uniform((32, 32, 1), minval=0, maxval=256, dtype=tf.int32)
     image = tf.cast(image, tf.uint8)
-    nlpd = distance.nlpd_fast(
-        image, image, num_levels=3, data_format="channels_first")
+    nlpd = distance.nlpd_fast(image, image, num_levels=3)
     self.assertEqual(nlpd, 0.)
 
 
