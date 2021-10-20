@@ -32,7 +32,7 @@ class SteerablePyramid(tf.keras.layers.Layer):
   dimension will be multiplied by `num_subbands`. If the input shape is
   `(H, W)`, the outputs will all have a channel dimension added appropriately.
 
-  For example (here, `S = num_subbands`):
+  For example (here, `S = num_subbands` and `skip_highpass=False`):
 
   ```
   data_format == 'channels_last':
@@ -46,22 +46,25 @@ class SteerablePyramid(tf.keras.layers.Layer):
   """
 
   def __init__(self, num_levels=6, num_subbands=6, padding="same_zeros",
-               data_format="channels_last", name="SteerablePyramid"):
+               skip_highpass=False, data_format="channels_last",
+               name="SteerablePyramid"):
     """Initializer.
 
     Args:
       num_levels: Integer. The number of pyramid levels, including the lowpass
-        and highpass residual.
+        and highpass residual (if `skip_highpass=False`).
       num_subbands: Integer. The number of subbands per level. Must be one of
         1, 2, 4, or 6.
       padding: String. `'same_zeros'` or `'valid'`.
+      skip_highpass: Boolean. If `True`, prevents computing highpass residual
+        band.
       data_format: String. Either `'channels_first'` or `'channels_last'`. The
         data format used for the convolution operations.
       name: String. A name for the transformation.
     """
     super().__init__(name=name)
-    if num_levels < 2:
-      raise ValueError(f"Must have at least two levels, received {num_levels}.")
+    if num_levels < 1 + int(not skip_highpass):
+      raise ValueError(f"Not enough pyramid levels: {num_levels}.")
     if num_subbands not in (1, 2, 4, 6):
       raise ValueError(f"{num_subbands} subbands per level are not supported.")
     if padding not in ("same_zeros", "valid"):
@@ -75,6 +78,7 @@ class SteerablePyramid(tf.keras.layers.Layer):
     self.num_levels = int(num_levels)
     self.num_subbands = int(num_subbands)
     self.padding = str(padding)
+    self.skip_highpass = bool(skip_highpass)
     self.data_format = str(data_format)
 
   @property
@@ -153,12 +157,15 @@ class SteerablePyramid(tf.keras.layers.Layer):
     lo = tf.nn.depthwise_conv2d(
         x, lo0filt, strides=(1, 1, 1, 1), padding=padding,
         data_format=self._data_format)
-    hi0 = tf.nn.depthwise_conv2d(
-        x, hi0filt, strides=(1, 1, 1, 1), padding=padding,
-        data_format=self._data_format)
-    subbands = [hi0]
+    if self.skip_highpass:
+      subbands = []
+    else:
+      hi0 = tf.nn.depthwise_conv2d(
+          x, hi0filt, strides=(1, 1, 1, 1), padding=padding,
+          data_format=self._data_format)
+      subbands = [hi0]
 
-    for _ in range(self.num_levels - 2):
+    while len(subbands) < self.num_levels - 1:
       ba = tf.nn.depthwise_conv2d(
           lo, bfilts, strides=(1, 1, 1, 1), padding=padding,
           data_format=self._data_format)

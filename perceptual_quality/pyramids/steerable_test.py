@@ -70,6 +70,20 @@ class SteerableTest(tf.test.TestCase, parameterized.TestCase):
     for subband, shape in zip(subbands, expected_shapes):
       self.assertEqual(subband.shape, shape)
 
+  @parameterized.parameters(1, 2)
+  def test_number_and_shape_of_scales_match_skip_highpass(self, num_levels):
+    pyramid = steerable.SteerablePyramid(
+        num_levels=num_levels, skip_highpass=True, data_format="channels_last")
+    image = tf.zeros((1, 16, 16, 2))
+    subbands = pyramid(image)
+    self.assertLen(subbands, num_levels)
+    expected_shapes = {
+        1: [(1, 16, 16, 2)],
+        2: [(1, 16, 16, 12), (1, 8, 8, 2)],
+    }[num_levels]
+    for subband, shape in zip(subbands, expected_shapes):
+      self.assertEqual(subband.shape, shape)
+
   @parameterized.parameters(1, 2, 4, 6)
   def test_number_and_shape_of_scales_match_valid(self, num_subbands):
     pyramid = steerable.SteerablePyramid(
