@@ -65,7 +65,7 @@ characteristics, etc.
 
 ## LPIPS
 
-This is a tensorflow port of the Learned Perceptual Image Patch Similarity (LPIPS) m, as described in:
+This is a tensorflow port of the Learned Perceptual Image Patch Similarity (LPIPS), as described in:
 
 > "The Unreasonable Effectiveness of Deep Features as a Perceptual Metric"<br />
 > Zhang, Richard and Isola, Phillip and Efros, Alexei A and Shechtman, Eli and Wang, Oliver<br />
