@@ -2,6 +2,10 @@ import os
 import tensorflow as tf
 import urllib.request
 
+'''
+This code is copied from HiFiC implementation in Tensorflow Compression repo and updated to work with TF2
+'''
+
 _LPIPS_URL = "http://rail.eecs.berkeley.edu/models/lpips/net-lin_alex_v0.1.pb"
 
 
