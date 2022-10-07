@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""PIM image quality metric."""
+"""LPIPS image quality metric."""
 
 # pylint:disable=unused-import
 from perceptual_quality.lpips.LPIPS import LPIPSLoss
