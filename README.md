@@ -63,6 +63,26 @@ Refer to the online help of `nlpd.nlpd()`, `nlpd.nlpd_fast()`, and `nlpd.NLP()`
 for further information on supported image formats, assumed display
 characteristics, etc.
 
+## LPIPS
+
+This is a tensorflow port of the Learned Perceptual Image Patch Similarity (LPIPS), as described in:
+
+> "The Unreasonable Effectiveness of Deep Features as a Perceptual Metric"<br />
+> Zhang, Richard and Isola, Phillip and Efros, Alexei A and Shechtman, Eli and Wang, Oliver<br />
+> https://doi.org/10.48550/arXiv.1801.03924
+
+Usage:
+
+```python
+from perceptual_quality import lpips
+
+model = lpips.LPIPSLoss("net-lin_alex_v0.1.pb")
+
+# image_A, image_B: 4D tensors, batch x height x width x 3, sRGB colorspace.
+# Returns the LPIPS distance between A and B for each batch element.
+distance = model(image_A/255, image_B/255)
+```
+
 ## Authors
 
 * Sangnie Bhardwaj (github: [sangnie](https://github.com/sangnie))
